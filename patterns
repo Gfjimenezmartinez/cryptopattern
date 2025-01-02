@@ -1,0 +1,73 @@
+import yfinance as yf
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Function to fetch data
+def get_data(ticker_symbol):
+    stock = yf.Ticker(ticker_symbol)
+    data = stock.history(period="1y")
+    return data
+
+# Function to detect Ascending Triangle
+def detect_ascending_triangle(data):
+    lows = data['Low'].values
+    highs = data['High'].values
+    
+    # Find the trend of lows and highs
+    higher_lows = [lows[i] for i in range(1, len(lows)) if lows[i] > lows[i-1]]
+    flat_high = np.max(highs[-10:])  # last 10 days highs are relatively flat
+    
+    if len(higher_lows) > 5 and max(highs) == flat_high:
+        return True
+    return False
+
+# Function to detect Descending Triangle
+def detect_descending_triangle(data):
+    lows = data['Low'].values
+    highs = data['High'].values
+    
+    # Find the trend of lows and highs
+    lower_highs = [highs[i] for i in range(1, len(highs)) if highs[i] < highs[i-1]]
+    flat_low = np.min(lows[-10:])  # last 10 days lows are relatively flat
+    
+    if len(lower_highs) > 5 and min(lows) == flat_low:
+        return True
+    return False
+
+# Function to detect Head and Shoulders (Simple version)
+def detect_head_and_shoulders(data):
+    highs = data['High'].values
+    
+    # Basic pattern: left shoulder, head, right shoulder
+    left_shoulder = max(highs[:len(highs)//3])
+    head = max(highs[len(highs)//3:2*len(highs)//3])
+    right_shoulder = max(highs[2*len(highs)//3:])
+    
+    if left_shoulder > head and right_shoulder > head:
+        return True
+    return False
+
+# Main function to detect and plot patterns for XRP
+def detect_patterns(ticker_symbol):
+    data = get_data(ticker_symbol)
+    
+    print(f"Analyzing {ticker_symbol}...")
+    
+    # Detect Ascending Triangle
+    if detect_ascending_triangle(data):
+        print("Ascending Triangle detected!")
+    
+    # Detect Descending Triangle
+    if detect_descending_triangle(data):
+        print("Descending Triangle detected!")
+    
+    # Detect Head and Shoulders
+    if detect_head_and_shoulders(data):
+        print("Head and Shoulders pattern detected!")
+    
+    # Plotting the stock data
+    data['Close'].plot(figsize=(10, 5), title=f"{ticker_symbol} Price Data")
+    plt.show()
+
+# Test with XRP-USD
+detect_patterns('XRP-USD')
