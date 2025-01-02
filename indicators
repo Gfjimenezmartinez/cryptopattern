@@ -1,0 +1,655 @@
+import yfinance as yf
+  2 import pandas as pd
+  3
+  4 # List of crypto pairs to analyze
+  5 crypto_pairs = [
+  6     "BTC-USD","XRP-USD","ETH-USD","HBAR-USD","AAVE-USD","LINK-USD","LTC-USD", "JASMY-USD", "AVAX-USD", 
+  7     "OP-USD", "ALGO-USD", "ICP-USD", "ONDO-USD", "SEI-USD"
+  8 ]
+  9 # Function to calculate and print the analysis for each crypto
+ 10 def analyze_crypto(tickerSymbol):
+ 11     # Fetch historical data for each crypto pair
+ 12     stock = yf.Ticker(tickerSymbol)
+ 13     data = stock.history(period="1d", interval="1m")  # 1-minute data for the last day
+ 14
+ 15     # Calculate EMA
+ 16     data['EMA'] = data['Close'].ewm(span=14, adjust=False).mean()
+ 17
+ 18     # Calculate MA
+ 19     data['MA'] = data['Close'].rolling(window=14).mean()
+ 20
+ 21     # Calculate SMMA
+ 22     def calculate_smma(data, period=14):
+ 23         return data.ewm(alpha=1/period, adjust=False).mean()
+ 24
+ 25     data['SMMA'] = calculate_smma(data['Close'], period=14)
+ 26
+ 27     # Calculate RSI
+ 28     def calculate_rsi(data, window=14):
+ 29         delta = data.diff(1)
+ 30         gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+ 31         loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+ 32         rs = gain / loss
+ 33         rsi = 100 - (100 / (1 + rs))
+ 34         return rsi
+ 35
+ 36     data['RSI'] = calculate_rsi(data['Close'], window=14)
+ 37
+ 38     # Calculate Bollinger Bands
+ 39     def calculate_bollinger_bands(data, window=20, num_std=2):
+ 40         sma = data['Close'].rolling(window=window).mean()
+ 41         rolling_std = data['Close'].rolling(window=window).std()
+ 42         upper_band = sma + (rolling_std * num_std)
+ 43         lower_band = sma - (rolling_std * num_std)
+ 44         return upper_band, lower_band, sma
+ 45
+ 46     data['Upper_Band'], data['Lower_Band'], data['Middle_Band'] = calculate_bollinger_bands(data)
+ 47
+ 48     # Calculate MACD
+ 49     def calculate_macd(data, short_span=12, long_span=26, signal_span=9):
+ 50         macd_line = data['Close'].ewm(span=short_span, adjust=False).mean() - data['Close'].ewm(span=long_span, adjust=False).mean()
+ 51         signal_line = macd_line.ewm(span=signal_span, adjust=False).mean()
+ 52         histogram = macd_line - signal_line
+ 53         return macd_line, signal_line, histogram
+ 54
+ 55     data['MACD_Line'], data['Signal_Line'], data['MACD_Histogram'] = calculate_macd(data)
+ 56 # Calculate OBV (On-Balance Volume)
+ 58     def calculate_obv(data):
+ 59         obv = [0]
+ 60         for i in range(1, len(data)):
+ 61             if data['Close'].iloc[i] > data['Close'].iloc[i-1]:
+ 62                 obv.append(obv[-1] + data['Volume'].iloc[i])
+ 63             elif data['Close'].iloc[i] < data['Close'].iloc[i-1]:
+ 64                 obv.append(obv[-1] - data['Volume'].iloc[i])
+ 65             else:
+ 66                 obv.append(obv[-1])
+ 67         return pd.Series(obv, index=data.index)
+ 68
+ 69     data['OBV'] = calculate_obv(data)
+ 70
+ 71     # Calculate Stochastic Oscillator (%K)
+ 72     def calculate_stochastic_oscillator(data, window=14):
+ 73         high_14 = data['High'].rolling(window=window).max()
+ 74         low_14 = data['Low'].rolling(window=window).min()
+ 75         stochastic_k = ((data['Close'] - low_14) / (high_14 - low_14)) * 100
+ 76         return stochastic_k
+ 77
+ 78     data['Stochastic_K'] = calculate_stochastic_oscillator(data)
+ 79
+ 80     # Calculate Golden and Death Crossovers
+ 81     def calculate_crossovers(data):
+ 82         data['Golden_Crossover'] = data['EMA'] > data['MA']
+ 83         data['Death_Crossover'] = data['EMA'] < data['MA']
+ 84         return data
+ 85
+ 86     data = calculate_crossovers(data)
+ 87
+ 88     # Fibonacci Retracement Levels
+ 89     def calculate_fibonacci_levels(data):
+ 90         high = data['Close'].max()
+ 91         low = data['Close'].min()
+ 92         diff = high - low
+ 93         fib_23_6 = high - 0.236 * diff
+ 94         fib_38_2 = high - 0.382 * diff
+ 95         fib_50 = high - 0.5 * diff
+ 96         fib_61_8 = high - 0.618 * diff
+ 97         return fib_23_6, fib_38_2, fib_50, fib_61_8, high, low
+ 98
+ 99     fib_23_6, fib_38_2, fib_50, fib_61_8, fib_high, fib_low = calculate_fibonacci_levels(data)
+100
+101     # Calculate Stop Loss and Take Profit
+102     def calculate_stop_loss_take_profit(data, fib_23_6, fib_38_2, fib_50, fib_61_8, fib_high, fib_low):
+103         current_price = data['Close'].iloc[-1]
+104
+105         # Setting a buffer for stop loss and take profit levels
+106         buffer = 0.02  # 2% buffer
+107
+108         # Stop Loss - Set stop loss just below the Fibonacci 23.6% level
+109         stop_loss = fib_23_6 - (fib_23_6 * buffer)
+110
+         # Take Profit - Set take profit just above the Fibonacci 61.8% level
+112         take_profit = fib_61_8 + (fib_61_8 * buffer)
+113
+114         return stop_loss, take_profit
+115
+116     stop_loss, take_profit = calculate_stop_loss_take_profit(data, fib_23_6, fib_38_2, fib_50, fib_61_8, fib_high, fib_low)
+117
+118     # Get the latest values
+119     latest_price = data['Close'].iloc[-1]
+120     latest_ema = data['EMA'].iloc[-1]
+121     latest_ma = data['MA'].iloc[-1]
+122     latest_smma = data['SMMA'].iloc[-1]
+123     latest_rsi = data['RSI'].iloc[-1]
+124     latest_upper_band = data['Upper_Band'].iloc[-1]
+125     latest_lower_band = data['Lower_Band'].iloc[-1]
+126     latest_middle_band = data['Middle_Band'].iloc[-1]
+127     latest_macd = data['MACD_Line'].iloc[-1]
+128     latest_signal = data['Signal_Line'].iloc[-1]
+129     latest_histogram = data['MACD_Histogram'].iloc[-1]
+130     latest_obv = data['OBV'].iloc[-1]
+131     latest_stochastic_k = data['Stochastic_K'].iloc[-1]
+132
+133     # Get the latest crossover signals
+134     latest_golden_crossover = data['Golden_Crossover'].iloc[-1]
+135     latest_death_crossover = data['Death_Crossover'].iloc[-1]
+136
+137     # Print the results
+138     print(f"\nCrypto Pair: {tickerSymbol}")
+139     print(f"Latest Price: {latest_price:.4f}")
+140     print(f"Latest EMA: {latest_ema:.4f}")
+141     print(f"Latest MA: {latest_ma:.4f}")
+142     print(f"Latest SMMA: {latest_smma:.4f}")
+143     print(f"Latest RSI: {latest_rsi:.2f}")
+144     print(f"Latest Upper Bollinger Band: {latest_upper_band:.4f}")
+145     print(f"Latest Lower Bollinger Band: {latest_lower_band:.4f}")
+146     print(f"Latest Middle Bollinger Band: {latest_middle_band:.4f}")
+147     print(f"Latest MACD Line: {latest_macd:.4f}")
+148     print(f"Latest Signal Line: {latest_signal:.4f}")
+         # Take Profit - Set take profit just above the Fibonacci 61.8% level
+112         take_profit = fib_61_8 + (fib_61_8 * buffer)
+113
+114         return stop_loss, take_profit
+115
+116     stop_loss, take_profit = calculate_stop_loss_take_profit(data, fib_23_6, fib_38_2, fib_50, fib_61_8, fib_high, fib_low)
+117
+118     # Get the latest values
+119     latest_price = data['Close'].iloc[-1]
+120     latest_ema = data['EMA'].iloc[-1]
+121     latest_ma = data['MA'].iloc[-1]
+122     latest_smma = data['SMMA'].iloc[-1]
+123     latest_rsi = data['RSI'].iloc[-1]
+124     latest_upper_band = data['Upper_Band'].iloc[-1]
+125     latest_lower_band = data['Lower_Band'].iloc[-1]
+126     latest_middle_band = data['Middle_Band'].iloc[-1]
+127     latest_macd = data['MACD_Line'].iloc[-1]
+128     latest_signal = data['Signal_Line'].iloc[-1]
+129     latest_histogram = data['MACD_Histogram'].iloc[-1]
+130     latest_obv = data['OBV'].iloc[-1]
+131     latest_stochastic_k = data['Stochastic_K'].iloc[-1]
+132
+133     # Get the latest crossover signals
+134     latest_golden_crossover = data['Golden_Crossover'].iloc[-1]
+135     latest_death_crossover = data['Death_Crossover'].iloc[-1]
+136
+137     # Print the results
+138     print(f"\nCrypto Pair: {tickerSymbol}")
+139     print(f"Latest Price: {latest_price:.4f}")
+140     print(f"Latest EMA: {latest_ema:.4f}")
+141     print(f"Latest MA: {latest_ma:.4f}")
+142     print(f"Latest SMMA: {latest_smma:.4f}")
+143     print(f"Latest RSI: {latest_rsi:.2f}")
+144     print(f"Latest Upper Bollinger Band: {latest_upper_band:.4f}")
+145     print(f"Latest Lower Bollinger Band: {latest_lower_band:.4f}")
+146     print(f"Latest Middle Bollinger Band: {latest_middle_band:.4f}")
+147     print(f"Latest MACD Line: {latest_macd:.4f}")
+148     print(f"Latest Signal Line: {latest_signal:.4f}")
+
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
+
+print(f"Latest MACD Histogram: {latest_histogram:.4f}")
+150     print(f"Latest OBV: {latest_obv:.4f}")
+151     print(f"Latest Stochastic Oscillator %K: {latest_stochastic_k:.2f}")
+152     print(f"Latest Golden Crossover: {'Yes' if latest_golden_crossover else 'No'}")
+153     print(f"Latest Death Crossover: {'Yes' if latest_death_crossover else 'No'}")
+154
+155     # Print Fibonacci Levels
+156     print(f"Fibonacci Levels:")
+157     print(f"23.6% Level: {fib_23_6:.4f}")
+158     print(f"38.2% Level: {fib_38_2:.4f}")
+159     print(f"50.0% Level: {fib_50:.4f}")
+160     print(f"61.8% Level: {fib_61_8:.4f}")
+161     print(f"High: {fib_high:.4f}")
+162     print(f"Low: {fib_low:.4f}")
+163     
+164     # Print Stop Loss and Take Profit Levels
+165     print(f"Calculated Stop Loss: {stop_loss:.4f}")
+166     print(f"Calculated Take Profit: {take_profit:.4f}")
+167     
+168     # Generate Buy/Sell Signals
+169     buy_signal = (latest_rsi < 30) and (latest_macd > latest_signal) and (latest_price > latest_middle_band) and (latest_stochastic_k < 20) and (latest_golden_crossover)
+170     sell_signal = (latest_rsi > 70) and (latest_macd < latest_signal) and (latest_price < latest_middle_band) and (latest_stochastic_k > 80) and (latest_death_crossover)
+171
+172     # Print Buy/Sell Signals
+173     if buy_signal:
+174         print(f"Buy Signal: The market is showing signs of a potential upward trend.")
+175         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+176         print(f"Suggested Take Profit: {take_profit:.4f}")
+177     elif sell_signal:
+178         print(f"Sell Signal: The market may be overbought, and a bearish trend could be starting.")
+179         print(f"Suggested Stop Loss: {stop_loss:.4f}")
+180         print(f"Suggested Take Profit: {take_profit:.4f}")
+181     else:
+182         print(f"No strong signals. Waiting for a more defined trend.")
+183
+184
+185 # Loop through each crypto pair and analyze
+186 for crypto_pair in crypto_pairs:
+187     analyze_crypto(crypto_pair)
